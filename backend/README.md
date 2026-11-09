@@ -116,6 +116,100 @@ and retries until the database is reachable, then starts the server.
 
 ---
 
+## 🐳 Running with Docker (development — hot reload)
+
+Run **only the API** in a container (using `Dockerfile.dev`) while PostgreSQL and
+Redis run as separate containers. The source is bind-mounted and the container
+runs `nest start --watch`, so the server reloads whenever you save a file.
+
+> Run all commands from the `backend/` folder.
+
+### 0. Create a shared network (once)
+
+```bash
+docker network create todo_dev_net
+```
+
+### 1. Start PostgreSQL and Redis
+
+```bash
+docker run -d --name todo_postgres_dev \
+  --network todo_dev_net \
+  -p 5432:5432 \
+  -e POSTGRES_USER=todo \
+  -e POSTGRES_PASSWORD=todo_password \
+  -e POSTGRES_DB=todo_db \
+  -v todo_dev_pgdata:/var/lib/postgresql/data \
+  postgres:16-alpine
+
+docker run -d --name todo_redis_dev \
+  --network todo_dev_net \
+  -p 6379:6379 \
+  redis:7-alpine
+```
+
+Because each `docker run` publishes its own port, Docker Desktop lists
+`todo_postgres_dev` (`5432`) and `todo_redis_dev` (`6379`) as separate
+containers — unlike `docker compose`, which groups every service under one
+project row (expand the chevron to see the ports).
+
+### 2. Build the development image
+
+```bash
+docker build -f Dockerfile.dev -t todo-backend-dev .
+```
+
+### 3. Run the API (hot reload)
+
+```bash
+# PowerShell
+docker run -d --name todo_backend_dev \
+  --network todo_dev_net \
+  -p 3000:3000 \
+  -v "${PWD}:/app" \
+  -v /app/node_modules \
+  -e DATABASE_URL="postgresql://todo:todo_password@todo_postgres_dev:5432/todo_db?schema=public" \
+  -e REDIS_URL="redis://todo_redis_dev:6379" \
+  todo-backend-dev
+```
+
+> **cmd.exe** users: replace `"${PWD}:/app"` with `"%cd%:/app"`.
+
+The `-v /app/node_modules` line keeps the container's own `node_modules` (built
+into the image) instead of your host's, which would be binary-incompatible.
+
+### 4. Apply migrations and (optionally) seed
+
+```bash
+docker exec -it todo_backend_dev npx prisma migrate deploy
+docker exec -it todo_backend_dev npm run db:seed   # optional
+```
+
+### 5. Verify
+
+```bash
+curl http://localhost:3000/api/health
+docker logs -f todo_backend_dev                    # tail the logs
+```
+
+After you change `prisma/schema.prisma`, regenerate and migrate inside the
+container:
+
+```bash
+docker exec -it todo_backend_dev npx prisma generate
+docker exec -it todo_backend_dev npx prisma migrate dev
+```
+
+### Stop & clean up
+
+```bash
+docker rm -f todo_backend_dev todo_postgres_dev todo_redis_dev
+docker network rm todo_dev_net     # optional
+docker volume rm todo_dev_pgdata   # removes the dev database data
+```
+
+---
+
 ## 🔧 Environment variables
 
 | Variable       | Default                                                          | Description                              |

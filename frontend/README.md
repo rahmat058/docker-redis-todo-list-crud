@@ -76,6 +76,70 @@ docker run -d --name todo_frontend -p 5173:80 todo-frontend
 
 ---
 
+## 🐳 Running with Docker (development — hot reload)
+
+Run the **Vite dev server** in a container (using `Dockerfile.dev`) with hot
+module replacement. The source is bind-mounted and `/api` is proxied to the
+backend.
+
+> Run all commands from the `frontend/` folder.
+
+### 0. Prerequisites
+
+A shared network and a reachable backend:
+
+```bash
+docker network create todo_dev_net   # skip if it already exists
+```
+
+Use the backend dev container `todo_backend_dev` (see
+[`../backend/README.md`](../backend/README.md)) on that same network, or your
+own backend.
+
+### 1. Build the development image
+
+```bash
+docker build -f Dockerfile.dev -t todo-frontend-dev .
+```
+
+### 2. Run the dev server (hot reload)
+
+```bash
+# PowerShell
+docker run -d --name todo_frontend_dev \
+  --network todo_dev_net \
+  -p 5173:5173 \
+  -v "${PWD}:/app" \
+  -v /app/node_modules \
+  -e VITE_PROXY_TARGET="http://todo_backend_dev:3000" \
+  -e VITE_USE_POLLING=true \
+  todo-frontend-dev
+```
+
+> **cmd.exe** users: replace `"${PWD}:/app"` with `"%cd%:/app"`.
+
+- `VITE_PROXY_TARGET` points the dev proxy at the backend container. If the
+  backend instead runs on your **host** (`npm run start:dev`), use
+  `-e VITE_PROXY_TARGET="http://host.docker.internal:3000"`.
+- `VITE_USE_POLLING=true` makes Vite detect file changes through the Docker bind
+  mount on Windows/macOS, where HMR can otherwise miss edits.
+- `-v /app/node_modules` keeps the container's own `node_modules`.
+
+### 3. Verify
+
+```bash
+# -> http://localhost:5173
+docker logs -f todo_frontend_dev
+```
+
+### Stop & clean up
+
+```bash
+docker rm -f todo_frontend_dev
+```
+
+---
+
 ## 🔧 Environment variables
 
 | Variable       | Default | Description                                                        |
